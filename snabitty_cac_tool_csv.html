@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snabitty CAC Diagnosis Tool</title>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    :root{
+      --bg:#f8fafc; --card:#ffffff; --text:#0f172a; --muted:#64748b; --border:#e2e8f0;
+      --good-bg:#ecfdf5; --good:#047857; --watch-bg:#fffbeb; --watch:#b45309; --weak-bg:#fff1f2; --weak:#be123c;
+      --dark:#0f172a; --accent:#2563eb;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:1240px;margin:0 auto;padding:24px}
+    h1{font-size:32px;line-height:1.08;margin:0 0 8px}
+    p.lead{margin:0 0 22px;color:var(--muted);max-width:920px}
+    .grid{display:grid;grid-template-columns:1.02fr .98fr;gap:24px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:24px;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+    .card h2{font-size:20px;margin:0 0 18px}
+    .card-inner{padding:22px}
+    .input-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px}
+    input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:14px;font-size:15px}
+    .buttons{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+    button{border:0;background:var(--dark);color:#fff;padding:11px 16px;border-radius:14px;font-size:14px;cursor:pointer}
+    button.secondary{background:#fff;color:var(--text);border:1px solid var(--border)}
+    .primary-read{background:var(--dark);color:#fff;border-radius:20px;padding:18px}
+    .primary-read .eyebrow{font-size:13px;color:#cbd5e1;margin-bottom:6px}
+    .primary-read .title{font-size:28px;font-weight:700;margin-bottom:8px}
+    .primary-read .summary{font-size:14px;color:#cbd5e1}
+    .metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+    .metric,.small-metric{border:1px solid var(--border);border-radius:18px;padding:14px}
+    .metric .k,.small-metric .k{font-size:13px;color:var(--muted)}
+    .metric .v{font-size:28px;font-weight:700;margin-top:4px}
+    .small-metric .v{font-size:24px;font-weight:700;margin-top:4px}
+    .metric .meta{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px}
+    .meta span:first-child{font-size:12px;color:var(--muted)}
+    .badge{font-size:12px;font-weight:600;padding:6px 10px;border-radius:999px;white-space:nowrap}
+    .good{background:var(--good-bg);color:var(--good)}
+    .watch{background:var(--watch-bg);color:var(--watch)}
+    .weak{background:var(--weak-bg);color:var(--weak)}
+    .list-card{border:1px solid var(--border);border-radius:18px;padding:14px;margin-top:14px}
+    .list-card h3{font-size:15px;margin:0 0 10px}
+    ul{margin:0;padding-left:18px}
+    li{margin:8px 0;color:#334155}
+    .bottom{margin-top:24px}
+    .bottom-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .dropzone{
+      border:2px dashed #cbd5e1;border-radius:20px;padding:18px;background:#f8fbff;
+      display:flex;flex-direction:column;gap:8px;align-items:flex-start;justify-content:center;margin-bottom:18px
+    }
+    .dropzone.drag{border-color:var(--accent);background:#eff6ff}
+    .dropzone strong{font-size:15px}
+    .dropzone span{font-size:13px;color:var(--muted)}
+    .hidden{display:none}
+    .status{font-size:13px;color:var(--muted);margin-top:8px}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:600}
+    .section-gap{margin-top:16px}
+    .campaign-list{display:grid;gap:10px;margin-top:12px}
+    .campaign{border:1px solid var(--border);border-radius:16px;padding:12px}
+    .campaign .name{font-size:14px;font-weight:600}
+    .campaign .sub{font-size:12px;color:var(--muted);margin-top:4px}
+    .campaign .mini{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+    .mini div{background:#fafafa;border:1px solid var(--border);border-radius:12px;padding:8px}
+    .mini .mk{font-size:11px;color:var(--muted)}
+    .mini .mv{font-size:15px;font-weight:700;margin-top:2px}
+    @media (max-width: 980px){
+      .grid{grid-template-columns:1fr}
+      .bottom-grid{grid-template-columns:1fr 1fr}
+      .campaign .mini{grid-template-columns:1fr 1fr}
+    }
+    @media (max-width: 620px){
+      .wrap{padding:14px}
+      h1{font-size:26px}
+      .input-grid,.metric-grid,.bottom-grid,.campaign .mini{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Snabitty CAC Diagnosis Tool</h1>
+    <p class="lead">Upload your Meta CSV in the same format as your sample export. The tool will auto-read spend, impressions, clicks, LPV, ATC, IC, purchases, and revenue, then tell you where CAC likely broke.</p>
+
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-inner">
+        <h2>CSV Upload</h2>
+        <div id="dropzone" class="dropzone">
+          <strong>Drag and drop your CSV here</strong>
+          <span>Or click below and choose the export file. This parser is built for your exact export format.</span>
+          <input id="fileInput" type="file" accept=".csv" />
+          <div id="fileStatus" class="status">No file uploaded yet.</div>
+        </div>
+        <div id="fileMeta" class="section-gap hidden">
+          <span class="pill" id="datePill">Date: —</span>
+          <span class="pill" id="campaignPill" style="margin-left:8px">Campaigns: —</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-inner">
+          <h2>Inputs</h2>
+          <div class="input-grid" id="inputs"></div>
+          <div class="buttons">
+            <button id="sampleBtn">Use sample data</button>
+            <button class="secondary" id="resetBtn">Reset</button>
+          </div>
+          <div class="status">You can still edit any field after the CSV autofills the numbers.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-inner">
+          <h2>Diagnosis</h2>
+          <div class="primary-read">
+            <div class="eyebrow">Primary read</div>
+            <div class="title" id="primaryTitle">—</div>
+            <div class="summary" id="primarySummary">—</div>
+          </div>
+          <div class="metric-grid" id="metricCards"></div>
+          <div class="list-card">
+            <h3>What this likely means</h3>
+            <ul id="notes"></ul>
+          </div>
+          <div class="list-card">
+            <h3>What to do next</h3>
+            <ul id="actions"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card bottom">
+      <div class="card-inner">
+        <h2>Computed Funnel Metrics</h2>
+        <div class="bottom-grid" id="computed"></div>
+      </div>
+    </div>
+
+    <div class="card bottom">
+      <div class="card-inner">
+        <h2>Campaign-level read</h2>
+        <div id="campaignList" class="campaign-list"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const defaults = {
+  spend: 3500,
+  impressions: 18000,
+  clicks: 320,
+  landingPageViews: 250,
+  addsToCart: 28,
+  initiatedCheckouts: 16,
+  purchases: 9,
+  revenue: 7600,
+  avgOrderValue: 820,
+  breakevenCAC: 500,
+};
+
+const fields = [
+  ["Spend", "spend"],
+  ["Impressions", "impressions"],
+  ["Clicks", "clicks"],
+  ["Landing Page Views", "landingPageViews"],
+  ["Adds to Cart", "addsToCart"],
+  ["Initiated Checkouts", "initiatedCheckouts"],
+  ["Purchases", "purchases"],
+  ["Revenue", "revenue"],
+  ["Average Order Value", "avgOrderValue"],
+  ["Break-even CAC", "breakevenCAC"],
+];
+
+const state = {...defaults};
+let parsedCampaigns = [];
+
+const REQUIRED_COLUMNS = [
+  "Campaign name",
+  "Amount spent (INR)",
+  "Impressions",
+  "Link clicks",
+  "Website landing page views",
+  "Adds to cart",
+  "Checkouts initiated",
+  "Purchases",
+  "Purchases conversion value"
+];
+
+function fmt(n, digits=2){
+  if (!isFinite(n)) return "—";
+  return Number(n).toLocaleString("en-IN", {minimumFractionDigits:digits, maximumFractionDigits:digits});
+}
+function pct(n){
+  if (!isFinite(n)) return "—";
+  return `${fmt(n,2)}%`;
+}
+function num(v){
+  if (v === null || v === undefined || v === "") return 0;
+  if (typeof v === "number") return isFinite(v) ? v : 0;
+  const cleaned = String(v).replace(/,/g, "").trim();
+  const x = parseFloat(cleaned);
+  return isFinite(x) ? x : 0;
+}
+function badgeHigherBetter(value, good, okay){
+  if (!isFinite(value)) return ["Need data","watch"];
+  if (value >= good) return ["Good","good"];
+  if (value >= okay) return ["Watch","watch"];
+  return ["Weak","weak"];
+}
+function badgeLowerBetter(value, good, okay){
+  if (!isFinite(value)) return ["Need data","watch"];
+  if (value <= good) return ["Good","good"];
+  if (value <= okay) return ["Watch","watch"];
+  return ["Weak","weak"];
+}
+
+function compute(s){
+  const spend = num(s.spend);
+  const impressions = num(s.impressions);
+  const clicks = num(s.clicks);
+  const landingPageViews = num(s.landingPageViews);
+  const addsToCart = num(s.addsToCart);
+  const initiatedCheckouts = num(s.initiatedCheckouts);
+  const purchases = num(s.purchases);
+  const revenue = num(s.revenue);
+  const avgOrderValue = num(s.avgOrderValue);
+  const breakevenCAC = num(s.breakevenCAC);
+
+  const cpm = impressions ? (spend / impressions) * 1000 : NaN;
+  const ctr = impressions ? (clicks / impressions) * 100 : NaN;
+  const cpc = clicks ? spend / clicks : NaN;
+  const lpvRate = clicks ? (landingPageViews / clicks) * 100 : NaN;
+  const atcRateFromLPV = landingPageViews ? (addsToCart / landingPageViews) * 100 : NaN;
+  const icRateFromATC = addsToCart ? (initiatedCheckouts / addsToCart) * 100 : NaN;
+  const purchaseRateFromIC = initiatedCheckouts ? (purchases / initiatedCheckouts) * 100 : NaN;
+  const purchaseRateFromLPV = landingPageViews ? (purchases / landingPageViews) * 100 : NaN;
+  const cac = purchases ? spend / purchases : NaN;
+  const roas = spend ? revenue / spend : NaN;
+  const marginBuffer = isFinite(cac) ? breakevenCAC - cac : NaN;
+  const expectedRevenue = purchases * avgOrderValue;
+  const actualVsExpected = expectedRevenue ? (revenue / expectedRevenue) * 100 : NaN;
+
+  return { spend, impressions, clicks, landingPageViews, addsToCart, initiatedCheckouts, purchases, revenue, avgOrderValue, breakevenCAC, cpm, ctr, cpc, lpvRate, atcRateFromLPV, icRateFromATC, purchaseRateFromIC, purchaseRateFromLPV, cac, roas, marginBuffer, actualVsExpected };
+}
+
+function diagnose(m){
+  if (!isFinite(m.cac)) {
+    return {
+      primary: "Need more data",
+      summary: "Enter purchases and spend to diagnose CAC.",
+      notes: ["Without purchases, CAC cannot be calculated."],
+      actions: ["Add today’s final purchase count and revenue."],
+    };
+  }
+
+  const notes = [];
+  const actions = [];
+  let primary = "Mixed day";
+
+  if (m.cac <= m.breakevenCAC) notes.push(`CAC is below your break-even threshold by ₹${fmt(m.marginBuffer)}.`);
+  else notes.push(`CAC is above break-even by ₹${fmt(Math.abs(m.marginBuffer))}.`);
+
+  const cpmWeak = m.cpm > 220;
+  const ctrWeak = m.ctr < 1.4;
+  const lpvWeak = m.lpvRate < 70;
+  const atcWeak = m.atcRateFromLPV < 8;
+  const icWeak = m.icRateFromATC < 45;
+  const purchaseWeak = m.purchaseRateFromIC < 35;
+
+  if (cpmWeak && !ctrWeak && !purchaseWeak) {
+    primary = "Attention is expensive";
+    notes.push("You are paying too much to reach people. The auction is working against you.");
+    actions.push("Launch fresh hooks and broader tests instead of squeezing the same ad harder.");
+    actions.push("Keep winners running, but add 3–5 new creatives this week.");
+  }
+  if (ctrWeak) {
+    primary = "Creative is the main bottleneck";
+    notes.push("People are seeing the ad, but not enough of them are clicking.");
+    actions.push("Fix the first 2 seconds. Show the insert swap immediately.");
+    actions.push("Test clearer angles: how it works, why it exists, boredom-of-phone, clutter reduction, styling freedom.");
+  }
+  if (!ctrWeak && lpvWeak) {
+    primary = "Traffic quality or page load issue";
+    notes.push("Clicks are happening, but too few are turning into landing page views.");
+    actions.push("Check page speed, broken links, and whether the ad promise matches the landing page.");
+  }
+  if (!ctrWeak && !lpvWeak && atcWeak) {
+    primary = "Product page persuasion is weak";
+    notes.push("People reach the site, but too few want to start building a combo.");
+    actions.push("Clarify the format faster: one clear case, many looks.");
+    actions.push("Improve proof, demo, trust cues, and why-buy-now messaging.");
+  }
+  if (!atcWeak && icWeak) {
+    primary = "Cart-to-checkout friction";
+    notes.push("Interest exists, but not enough people move from cart into checkout.");
+    actions.push("Audit shipping surprise, checkout buttons, coupon distractions, and cart clarity.");
+  }
+  if (!icWeak && purchaseWeak) {
+    primary = "Checkout conversion is weak";
+    notes.push("Intent is there, but too many people drop before purchasing.");
+    actions.push("Check payment methods, COD clarity, shipping confidence, and trust on the final steps.");
+  }
+  if (m.actualVsExpected < 90) {
+    notes.push("Revenue is lower than expected from purchases × AOV, which may mean discounting or lower basket sizes today.");
+    actions.push("Check whether today’s orders skewed toward smaller insert bundles or heavier discounts.");
+  }
+  if (m.cac > m.breakevenCAC && m.ctr >= 1.8 && m.purchaseRateFromLPV >= 3) {
+    primary = "Not a disaster, but economics were weak today";
+    notes.push("The funnel is not broken. Today may simply be an expensive auction or smaller order-value day.");
+    actions.push("Do not panic-edit. Compare against a 3-day average before making structural changes.");
+  }
+  if (!actions.length) {
+    actions.push("This looks stable. Keep spend steady and add fresh creatives instead of changing campaign structure.");
+  }
+
+  const summary = m.cac <= m.breakevenCAC
+    ? "Profitable on a first-order basis today, assuming your break-even CAC is accurate."
+    : "Unprofitable on a first-order basis today unless repeat purchase value or higher actual margins save it.";
+
+  return {primary, summary, notes, actions};
+}
+
+function renderInputs(){
+  const container = document.getElementById("inputs");
+  container.innerHTML = "";
+  fields.forEach(([label, key]) => {
+    const div = document.createElement("div");
+    div.innerHTML = `<label>${label}</label><input type="number" id="${key}" value="${state[key] ?? ""}" />`;
+    container.appendChild(div);
+  });
+  fields.forEach(([_, key]) => {
+    document.getElementById(key).addEventListener("input", (e) => {
+      state[key] = e.target.value;
+      renderAll();
+    });
+  });
+}
+
+function renderAll(){
+  const m = compute(state);
+  const d = diagnose(m);
+
+  document.getElementById("primaryTitle").textContent = d.primary;
+  document.getElementById("primarySummary").textContent = d.summary;
+
+  const metricCards = [
+    ["CAC", `₹${fmt(m.cac)}`, `Break-even: ₹${fmt(m.breakevenCAC)}`, badgeLowerBetter(m.cac, m.breakevenCAC * 0.9, m.breakevenCAC)],
+    ["CPM", `₹${fmt(m.cpm)}`, "Lower is better", badgeLowerBetter(m.cpm, 180, 220)],
+    ["CTR", pct(m.ctr), "Hook quality", badgeHigherBetter(m.ctr, 1.8, 1.4)],
+    ["LPV → Purchase", pct(m.purchaseRateFromLPV), "Site conversion", badgeHigherBetter(m.purchaseRateFromLPV, 3.0, 2.0)],
+  ];
+
+  document.getElementById("metricCards").innerHTML = metricCards.map(([k,v,meta,b]) => `
+    <div class="metric">
+      <div class="k">${k}</div>
+      <div class="v">${v}</div>
+      <div class="meta">
+        <span>${meta}</span>
+        <span class="badge ${b[1]}">${b[0]}</span>
+      </div>
+    </div>
+  `).join("");
+
+  document.getElementById("notes").innerHTML = d.notes.map(x => `<li>${x}</li>`).join("");
+  document.getElementById("actions").innerHTML = d.actions.map(x => `<li>${x}</li>`).join("");
+
+  const computed = [
+    ["CPC", `₹${fmt(m.cpc)}`],
+    ["LPV rate", pct(m.lpvRate)],
+    ["ATC from LPV", pct(m.atcRateFromLPV)],
+    ["IC from ATC", pct(m.icRateFromATC)],
+    ["Purchase from IC", pct(m.purchaseRateFromIC)],
+    ["Purchase from LPV", pct(m.purchaseRateFromLPV)],
+    ["ROAS", `${fmt(m.roas)}x`],
+    ["Margin buffer", isFinite(m.marginBuffer) ? (m.marginBuffer >= 0 ? `+₹${fmt(m.marginBuffer)}` : `-₹${fmt(Math.abs(m.marginBuffer))}`) : "—"],
+  ];
+
+  document.getElementById("computed").innerHTML = computed.map(([k,v]) => `
+    <div class="small-metric">
+      <div class="k">${k}</div>
+      <div class="v">${v}</div>
+    </div>
+  `).join("");
+
+  renderCampaigns();
+}
+
+function campaignDiagnosis(c){
+  const ctr = c.impressions ? (c.clicks / c.impressions) * 100 : NaN;
+  const lpvPurchase = c.lpv ? (c.purchases / c.lpv) * 100 : NaN;
+  const cac = c.purchases ? c.spend / c.purchases : NaN;
+  let read = "Needs context";
+  if (!c.purchases && c.lpv > 100 && c.atc > 0) read = "Getting intent but not closing";
+  else if (ctr < 1.2) read = "Weak hook";
+  else if (c.lpv > 0 && c.atc / c.lpv < 0.08) read = "Weak on-site persuasion";
+  else if (isFinite(cac) && cac > num(state.breakevenCAC)) read = "Too expensive";
+  else if (c.purchases > 0 && cac <= num(state.breakevenCAC)) read = "Healthy";
+  return {ctr, lpvPurchase, cac, read};
+}
+
+function renderCampaigns(){
+  const el = document.getElementById("campaignList");
+  if (!parsedCampaigns.length){
+    el.innerHTML = '<div class="status">Upload a CSV to see campaign-level reads.</div>';
+    return;
+  }
+
+  const sorted = [...parsedCampaigns].sort((a,b) => b.spend - a.spend);
+  el.innerHTML = sorted.map(c => {
+    const d = campaignDiagnosis(c);
+    return `
+      <div class="campaign">
+        <div class="name">${escapeHtml(c.name)}</div>
+        <div class="sub">${escapeHtml(d.read)}</div>
+        <div class="mini">
+          <div><div class="mk">Spend</div><div class="mv">₹${fmt(c.spend)}</div></div>
+          <div><div class="mk">CTR</div><div class="mv">${pct(d.ctr)}</div></div>
+          <div><div class="mk">LPV</div><div class="mv">${fmt(c.lpv,0)}</div></div>
+          <div><div class="mk">Purchases</div><div class="mv">${fmt(c.purchases,0)}</div></div>
+          <div><div class="mk">ATC</div><div class="mv">${fmt(c.atc,0)}</div></div>
+          <div><div class="mk">IC</div><div class="mv">${fmt(c.ic,0)}</div></div>
+          <div><div class="mk">CAC</div><div class="mv">${isFinite(d.cac) ? '₹' + fmt(d.cac) : '—'}</div></div>
+          <div><div class="mk">LPV → Purchase</div><div class="mv">${pct(d.lpvPurchase)}</div></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, function(m) {
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m];
+  });
+}
+
+function validateColumns(headers){
+  return REQUIRED_COLUMNS.filter(col => !headers.includes(col));
+}
+
+function parseMetaCsv(file){
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results){
+      const rows = results.data || [];
+      const headers = results.meta.fields || [];
+      const missing = validateColumns(headers);
+
+      if (missing.length){
+        document.getElementById("fileStatus").textContent = "CSV format mismatch. Missing columns: " + missing.join(", ");
+        return;
+      }
+
+      const cleanRows = rows
+        .filter(r => r["Campaign name"] && String(r["Campaign name"]).trim() !== "")
+        .map(r => ({
+          name: String(r["Campaign name"]).trim(),
+          spend: num(r["Amount spent (INR)"]),
+          impressions: num(r["Impressions"]),
+          clicks: num(r["Link clicks"]),
+          lpv: num(r["Website landing page views"]),
+          atc: num(r["Adds to cart"]),
+          ic: num(r["Checkouts initiated"]),
+          purchases: num(r["Purchases"]),
+          revenue: num(r["Purchases conversion value"]),
+          start: r["Reporting starts"] || "",
+          end: r["Reporting ends"] || "",
+        }));
+
+      parsedCampaigns = cleanRows;
+
+      const totals = cleanRows.reduce((acc, r) => {
+        acc.spend += r.spend;
+        acc.impressions += r.impressions;
+        acc.clicks += r.clicks;
+        acc.landingPageViews += r.lpv;
+        acc.addsToCart += r.atc;
+        acc.initiatedCheckouts += r.ic;
+        acc.purchases += r.purchases;
+        acc.revenue += r.revenue;
+        return acc;
+      }, {
+        spend: 0, impressions: 0, clicks: 0, landingPageViews: 0,
+        addsToCart: 0, initiatedCheckouts: 0, purchases: 0, revenue: 0
+      });
+
+      Object.assign(state, totals);
+
+      const aov = totals.purchases ? totals.revenue / totals.purchases : num(state.avgOrderValue || 820);
+      state.avgOrderValue = aov || 820;
+
+      const dateText = cleanRows[0] ? `${cleanRows[0].start || "—"} to ${cleanRows[0].end || "—"}` : "—";
+      document.getElementById("datePill").textContent = "Date: " + dateText;
+      document.getElementById("campaignPill").textContent = "Campaigns: " + cleanRows.length;
+      document.getElementById("fileMeta").classList.remove("hidden");
+      document.getElementById("fileStatus").textContent = `Loaded ${file.name}. Totals autofilled from ${cleanRows.length} campaign rows.`;
+
+      renderInputs();
+      renderAll();
+    },
+    error: function(err){
+      document.getElementById("fileStatus").textContent = "Could not read CSV: " + err.message;
+    }
+  });
+}
+
+function setupDropzone(){
+  const dz = document.getElementById("dropzone");
+  const fi = document.getElementById("fileInput");
+
+  dz.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dz.classList.add("drag");
+  });
+  dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
+  dz.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dz.classList.remove("drag");
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) parseMetaCsv(file);
+  });
+  fi.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) parseMetaCsv(file);
+  });
+}
+
+document.getElementById("sampleBtn").addEventListener("click", () => {
+  Object.assign(state, defaults);
+  parsedCampaigns = [];
+  document.getElementById("fileMeta").classList.add("hidden");
+  document.getElementById("fileStatus").textContent = "Loaded sample data.";
+  renderInputs();
+  renderAll();
+});
+document.getElementById("resetBtn").addEventListener("click", () => {
+  Object.assign(state, {
+    spend: "", impressions: "", clicks: "", landingPageViews: "", addsToCart: "",
+    initiatedCheckouts: "", purchases: "", revenue: "", avgOrderValue: 820, breakevenCAC: 500
+  });
+  parsedCampaigns = [];
+  document.getElementById("fileMeta").classList.add("hidden");
+  document.getElementById("fileStatus").textContent = "No file uploaded yet.";
+  renderInputs();
+  renderAll();
+});
+
+setupDropzone();
+renderInputs();
+renderAll();
+</script>
+</body>
+</html>
