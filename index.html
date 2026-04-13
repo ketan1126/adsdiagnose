@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snabitty CAC Diagnosis Tool — Single File</title>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{
+      --bg:#f8fafc; --card:#ffffff; --text:#0f172a; --muted:#64748b; --border:#e2e8f0;
+      --good-bg:#ecfdf5; --good:#047857; --watch-bg:#fffbeb; --watch:#b45309; --weak-bg:#fff1f2; --weak:#be123c;
+      --dark:#0f172a; --accent:#2563eb; --up:#047857; --down:#b91c1c;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:1280px;margin:0 auto;padding:24px}
+    h1{font-size:32px;line-height:1.08;margin:0 0 8px}
+    p.lead{margin:0 0 22px;color:var(--muted);max-width:980px}
+    .grid{display:grid;grid-template-columns:1.02fr .98fr;gap:24px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:24px;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+    .card h2{font-size:20px;margin:0 0 18px}
+    .card-inner{padding:22px}
+    .input-grid,.goals-grid,.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px}
+    input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:14px;font-size:15px}
+    .buttons{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+    button{border:0;background:var(--dark);color:#fff;padding:11px 16px;border-radius:14px;font-size:14px;cursor:pointer}
+    button.secondary{background:#fff;color:var(--text);border:1px solid var(--border)}
+    .primary-read{background:var(--dark);color:#fff;border-radius:20px;padding:18px}
+    .primary-read .eyebrow{font-size:13px;color:#cbd5e1;margin-bottom:6px}
+    .primary-read .title{font-size:28px;font-weight:700;margin-bottom:8px}
+    .primary-read .summary{font-size:14px;color:#cbd5e1}
+    .metric-grid,.bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+    .metric,.small-metric,.goal-box{border:1px solid var(--border);border-radius:18px;padding:14px}
+    .metric .k,.small-metric .k,.goal-box .k{font-size:13px;color:var(--muted)}
+    .metric .v,.small-metric .v,.goal-box .v{font-size:24px;font-weight:700;margin-top:4px}
+    .metric .meta{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px}
+    .meta span:first-child{font-size:12px;color:var(--muted)}
+    .badge{font-size:12px;font-weight:600;padding:6px 10px;border-radius:999px;white-space:nowrap}
+    .good{background:var(--good-bg);color:var(--good)}
+    .watch{background:var(--watch-bg);color:var(--watch)}
+    .weak{background:var(--weak-bg);color:var(--weak)}
+    .list-card{border:1px solid var(--border);border-radius:18px;padding:14px;margin-top:14px}
+    .list-card h3{font-size:15px;margin:0 0 10px}
+    ul{margin:0;padding-left:18px}
+    li{margin:8px 0;color:#334155}
+    .dropzone{
+      border:2px dashed #cbd5e1;border-radius:20px;padding:18px;background:#f8fbff;
+      display:flex;flex-direction:column;gap:8px;align-items:flex-start;justify-content:center
+    }
+    .dropzone.drag{border-color:var(--accent);background:#eff6ff}
+    .dropzone strong{font-size:15px}
+    .dropzone span{font-size:13px;color:var(--muted)}
+    .status{font-size:13px;color:var(--muted);margin-top:8px}
+    .pill{display:inline-block;padding:6px 10px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:600}
+    .section-gap{margin-top:16px}
+    .help{
+      display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;
+      border:1px solid var(--border);font-size:11px;color:var(--muted);margin-left:6px;cursor:help;background:#fff;
+    }
+    .label-row{display:flex;align-items:center;gap:4px}
+    .goal-meta{display:flex;justify-content:space-between;gap:10px;margin-top:8px;font-size:12px;color:var(--muted)}
+    .goal-ok{color:var(--up);font-weight:700}
+    .goal-bad{color:var(--down);font-weight:700}
+    .chart-wrap{height:320px}
+    @media (max-width: 980px){
+      .grid,.input-grid,.goals-grid,.charts-grid,.metric-grid,.bottom-grid{grid-template-columns:1fr}
+    }
+    @media (max-width: 620px){
+      .wrap{padding:14px}
+      h1{font-size:26px}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Snabitty CAC Diagnosis Tool — Single File</h1>
+    <p class="lead">Upload one Meta CSV in your fixed export format. The tool will immediately read the file and update every metric, goal check, graph, and diagnosis from that data.</p>
+
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-inner">
+        <h2>CSV Upload</h2>
+        <div id="dropzone" class="dropzone">
+          <strong>Upload your CSV</strong>
+          <span>Drag and drop or choose the export file. This page only analyzes one file.</span>
+          <input id="fileInput" type="file" accept=".csv" />
+          <div id="fileStatus" class="status">No file uploaded yet.</div>
+        </div>
+        <div id="fileMeta" class="section-gap" style="display:none">
+          <span class="pill" id="datePill">Date: —</span>
+          <span class="pill" id="campaignPill" style="margin-left:8px">Campaigns: —</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-inner">
+        <h2>Goals</h2>
+        <div class="goals-grid" id="goalsGrid"></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-inner">
+          <h2>Diagnosis</h2>
+          <div class="primary-read">
+            <div class="eyebrow">Primary read</div>
+            <div class="title" id="primaryTitle">Upload a file</div>
+            <div class="summary" id="primarySummary">The file will immediately populate the full analysis.</div>
+          </div>
+          <div class="metric-grid" id="metricCards"></div>
+          <div class="list-card">
+            <h3>What this likely means</h3>
+            <ul id="notes"></ul>
+          </div>
+          <div class="list-card">
+            <h3>What to do next</h3>
+            <ul id="actions"></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-inner">
+          <h2>Computed Funnel Metrics</h2>
+          <div class="bottom-grid" id="computed"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:24px">
+      <div class="card-inner">
+        <h2>Graphs</h2>
+        <div class="charts-grid">
+          <div class="chart-wrap"><canvas id="chartFunnel"></canvas></div>
+          <div class="chart-wrap"><canvas id="chartEfficiency"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const REQUIRED_COLUMNS = [
+  "Campaign name","Amount spent (INR)","Impressions","Link clicks",
+  "Website landing page views","Adds to cart","Checkouts initiated","Purchases","Purchases conversion value"
+];
+
+const goals = {
+  targetCAC: 500,
+  minCTR: 1.8,
+  maxCPM: 220,
+  minLPVPurchase: 3.0,
+  minATCRate: 8.0,
+  minPurchaseFromIC: 35.0,
+  minROAS: 1.8,
+};
+
+const metricHelp = {
+  CAC: "Customer acquisition cost = spend ÷ purchases. Lower is better. Good means below your target CAC.",
+  CPM: "Cost per 1,000 impressions. Lower is usually better. This tool treats about ₹180 good and ₹220 as a soft ceiling.",
+  CTR: "Click-through rate = clicks ÷ impressions. Mostly a creative signal. Around 1.8%+ is healthier here.",
+  LPVPurchase: "Landing page views to purchase rate = purchases ÷ LPV. Roughly 3%+ is a healthier reference.",
+  ATCFromLPV: "Adds to cart ÷ landing page views. Roughly 8%+ is healthier.",
+  PurchaseFromIC: "Purchases ÷ initiated checkouts. Roughly 35%+ is healthier.",
+  ROAS: "Revenue ÷ spend. Higher is better, but always interpret it alongside margins.",
+  CPC: "Cost per click = spend ÷ clicks.",
+  LPVRate: "Landing page views ÷ clicks. Roughly 70%+ is healthier.",
+  ICFromATC: "Initiated checkouts ÷ adds to cart. Roughly 45%+ is healthier.",
+};
+
+let current = null;
+let funnelChart = null;
+let efficiencyChart = null;
+
+function num(v){ if(v===null||v===undefined||v==="") return 0; const x=parseFloat(String(v).replace(/,/g,"").trim()); return isFinite(x)?x:0; }
+function fmt(n,d=2){ return isFinite(n)?Number(n).toLocaleString("en-IN",{minimumFractionDigits:d,maximumFractionDigits:d}):"—"; }
+function pct(n){ return isFinite(n)?`${fmt(n,2)}%`:"—"; }
+function helpIcon(key){ return `<span class="help" title="${metricHelp[key]||""}">i</span>`; }
+function badgeHigherBetter(value, good, okay){ if(!isFinite(value)) return ["Need data","watch"]; if(value>=good) return ["Good","good"]; if(value>=okay) return ["Watch","watch"]; return ["Weak","weak"]; }
+function badgeLowerBetter(value, good, okay){ if(!isFinite(value)) return ["Need data","watch"]; if(value<=good) return ["Good","good"]; if(value<=okay) return ["Watch","watch"]; return ["Weak","weak"]; }
+
+function compute(t){
+  const cpm = t.impressions ? (t.spend / t.impressions) * 1000 : NaN;
+  const ctr = t.impressions ? (t.clicks / t.impressions) * 100 : NaN;
+  const cpc = t.clicks ? t.spend / t.clicks : NaN;
+  const lpvRate = t.clicks ? (t.landingPageViews / t.clicks) * 100 : NaN;
+  const atcRateFromLPV = t.landingPageViews ? (t.addsToCart / t.landingPageViews) * 100 : NaN;
+  const icRateFromATC = t.addsToCart ? (t.initiatedCheckouts / t.addsToCart) * 100 : NaN;
+  const purchaseRateFromIC = t.initiatedCheckouts ? (t.purchases / t.initiatedCheckouts) * 100 : NaN;
+  const purchaseRateFromLPV = t.landingPageViews ? (t.purchases / t.landingPageViews) * 100 : NaN;
+  const cac = t.purchases ? t.spend / t.purchases : NaN;
+  const roas = t.spend ? t.revenue / t.spend : NaN;
+  return {...t,cpm,ctr,cpc,lpvRate,atcRateFromLPV,icRateFromATC,purchaseRateFromIC,purchaseRateFromLPV,cac,roas};
+}
+
+function diagnose(m){
+  if(!m) return {primary:"Upload a file",summary:"The file will immediately populate the full analysis.",notes:["No data loaded yet."],actions:["Upload your CSV."]};
+  const notes=[], actions=[];
+  let primary="Mixed day";
+  if (m.cac <= goals.targetCAC) notes.push(`CAC is below your target by ₹${fmt(goals.targetCAC - m.cac)}.`);
+  else notes.push(`CAC is above your target by ₹${fmt(m.cac - goals.targetCAC)}.`);
+  if (m.ctr < goals.minCTR){ primary="Creative is the main bottleneck"; notes.push("CTR is weak relative to your goal."); actions.push("Refresh hooks and show the insert swap immediately."); }
+  if (m.cpm > goals.maxCPM && m.ctr >= goals.minCTR){ primary="Attention is expensive"; notes.push("CPM is above your ceiling while click quality is holding."); actions.push("Do not panic-edit structure. Feed more fresh creatives and let the system stabilize."); }
+  if (m.atcRateFromLPV < goals.minATCRate && m.ctr >= goals.minCTR){ primary="Product page persuasion is weak"; notes.push("Traffic is landing, but too few people add to cart."); actions.push("Clarify the format faster: one clear case, many looks."); }
+  if (m.purchaseRateFromIC < goals.minPurchaseFromIC){ primary="Checkout conversion is weak"; notes.push("Too many people drop after starting checkout."); actions.push("Check payment methods, COD clarity, shipping confidence, and final-step trust."); }
+  if (m.roas < goals.minROAS) actions.push("ROAS is below goal. Judge it against actual contribution margin, not in isolation.");
+  if (!actions.length) actions.push("This looks stable. Keep structure steady and focus on creative volume.");
+  return {primary,summary:m.cac<=goals.targetCAC?"Within target economics for the day.":"Outside target economics for the day.",notes,actions};
+}
+
+function renderGoals(){
+  const container = document.getElementById("goalsGrid");
+  container.innerHTML = "";
+  const items = [
+    ["Target CAC","targetCAC",current?.cac,"₹"],
+    ["Minimum CTR %","minCTR",current?.ctr,"%"],
+    ["Maximum CPM","maxCPM",current?.cpm,"₹"],
+    ["Minimum LPV → Purchase %","minLPVPurchase",current?.purchaseRateFromLPV,"%"],
+    ["Minimum ATC from LPV %","minATCRate",current?.atcRateFromLPV,"%"],
+    ["Minimum Purchase from IC %","minPurchaseFromIC",current?.purchaseRateFromIC,"%"],
+    ["Minimum ROAS","minROAS",current?.roas,"x"],
+  ];
+  items.forEach(([label,key,actual,suffix])=>{
+    const pass = actual==null ? null : (key==="targetCAC"||key==="maxCPM" ? actual<=goals[key] : actual>=goals[key]);
+    const actualText = actual==null ? "Current: —" : `Current: ${suffix==="₹"?"₹":""}${fmt(actual)}${suffix==="%"?"%":suffix==="x"?"x":""}`;
+    const div = document.createElement("div");
+    div.className = "goal-box";
+    div.innerHTML = `
+      <div class="k">${label}</div>
+      <input type="number" id="goal_${key}" value="${goals[key]}">
+      <div class="goal-meta">
+        <span>${actualText}</span>
+        <span class="${pass===null?'':pass?'goal-ok':'goal-bad'}">${pass===null?'No data':pass?'On track':'Off goal'}</span>
+      </div>`;
+    container.appendChild(div);
+  });
+  Object.keys(goals).forEach(k=>{
+    document.getElementById(`goal_${k}`).addEventListener("input",(e)=>{ goals[k]=num(e.target.value); renderAll(); });
+  });
+}
+
+function renderAll(){
+  renderGoals();
+  const d = diagnose(current);
+  document.getElementById("primaryTitle").textContent = d.primary;
+  document.getElementById("primarySummary").textContent = d.summary;
+  const metricCards = current ? [
+    ["CAC", `₹${fmt(current.cac)}`, `Target: ₹${fmt(goals.targetCAC)}`, badgeLowerBetter(current.cac, goals.targetCAC*0.9, goals.targetCAC), "CAC"],
+    ["CPM", `₹${fmt(current.cpm)}`, "Lower is better", badgeLowerBetter(current.cpm, 180, goals.maxCPM), "CPM"],
+    ["CTR", pct(current.ctr), "Hook quality", badgeHigherBetter(current.ctr, goals.minCTR, Math.max(1.4, goals.minCTR*0.78)), "CTR"],
+    ["LPV → Purchase", pct(current.purchaseRateFromLPV), "Site conversion", badgeHigherBetter(current.purchaseRateFromLPV, goals.minLPVPurchase, Math.max(2.0, goals.minLPVPurchase*0.75)), "LPVPurchase"],
+  ] : [];
+  document.getElementById("metricCards").innerHTML = metricCards.map(([k,v,meta,b,helpKey])=>`
+    <div class="metric">
+      <div class="label-row"><div class="k">${k}</div>${helpIcon(helpKey)}</div>
+      <div class="v">${v}</div>
+      <div class="meta"><span>${meta}</span><span class="badge ${b[1]}">${b[0]}</span></div>
+    </div>`).join("");
+  document.getElementById("notes").innerHTML = d.notes.map(x=>`<li>${x}</li>`).join("");
+  document.getElementById("actions").innerHTML = d.actions.map(x=>`<li>${x}</li>`).join("");
+
+  const computed = current ? [
+    ["CPC", `₹${fmt(current.cpc)}`, "CPC"],
+    ["LPV rate", pct(current.lpvRate), "LPVRate"],
+    ["ATC from LPV", pct(current.atcRateFromLPV), "ATCFromLPV"],
+    ["IC from ATC", pct(current.icRateFromATC), "ICFromATC"],
+    ["Purchase from IC", pct(current.purchaseRateFromIC), "PurchaseFromIC"],
+    ["Purchase from LPV", pct(current.purchaseRateFromLPV), "LPVPurchase"],
+    ["ROAS", `${fmt(current.roas)}x`, "ROAS"],
+    ["Revenue", `₹${fmt(current.revenue)}`, "ROAS"],
+  ] : [];
+  document.getElementById("computed").innerHTML = computed.map(([k,v,helpKey])=>`
+    <div class="small-metric"><div class="label-row"><div class="k">${k}</div>${helpIcon(helpKey)}</div><div class="v">${v}</div></div>`).join("");
+
+  renderCharts();
+}
+
+function renderCharts(){
+  if(funnelChart) funnelChart.destroy();
+  if(efficiencyChart) efficiencyChart.destroy();
+  const funnelData = current ? [current.impressions,current.clicks,current.landingPageViews,current.addsToCart,current.initiatedCheckouts,current.purchases] : [0,0,0,0,0,0];
+  funnelChart = new Chart(document.getElementById('chartFunnel'), {
+    type:'bar',
+    data:{labels:['Impressions','Clicks','LPV','ATC','IC','Purchases'],datasets:[{label:'Current file',data:funnelData}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}}}
+  });
+  const effData = current ? [current.cac,current.cpm,current.ctr,current.purchaseRateFromLPV,current.roas] : [0,0,0,0,0];
+  efficiencyChart = new Chart(document.getElementById('chartEfficiency'), {
+    type:'bar',
+    data:{labels:['CAC','CPM','CTR','LPV→Purchase','ROAS'],datasets:[{label:'Current file',data:effData}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'}}}
+  });
+}
+
+function parseMetaCsv(file){
+  Papa.parse(file,{
+    header:true,
+    skipEmptyLines:true,
+    complete:function(results){
+      const rows = results.data || [];
+      const headers = results.meta.fields || [];
+      const missing = REQUIRED_COLUMNS.filter(col => !headers.includes(col));
+      if(missing.length){
+        document.getElementById("fileStatus").textContent = "CSV format mismatch. Missing columns: " + missing.join(", ");
+        return;
+      }
+      const cleanRows = rows.filter(r => r["Campaign name"] && String(r["Campaign name"]).trim() !== "").map(r=>({
+        name:String(r["Campaign name"]).trim(),
+        spend:num(r["Amount spent (INR)"]),
+        impressions:num(r["Impressions"]),
+        clicks:num(r["Link clicks"]),
+        lpv:num(r["Website landing page views"]),
+        atc:num(r["Adds to cart"]),
+        ic:num(r["Checkouts initiated"]),
+        purchases:num(r["Purchases"]),
+        revenue:num(r["Purchases conversion value"]),
+        start:r["Reporting starts"] || "",
+        end:r["Reporting ends"] || "",
+      }));
+      const totals = cleanRows.reduce((acc,r)=>{
+        acc.spend += r.spend; acc.impressions += r.impressions; acc.clicks += r.clicks; acc.landingPageViews += r.lpv;
+        acc.addsToCart += r.atc; acc.initiatedCheckouts += r.ic; acc.purchases += r.purchases; acc.revenue += r.revenue;
+        return acc;
+      },{spend:0,impressions:0,clicks:0,landingPageViews:0,addsToCart:0,initiatedCheckouts:0,purchases:0,revenue:0});
+      current = compute(totals);
+      const dateText = cleanRows[0] ? `${cleanRows[0].start || "—"} to ${cleanRows[0].end || "—"}` : "—";
+      document.getElementById("datePill").textContent = "Date: " + dateText;
+      document.getElementById("campaignPill").textContent = "Campaigns: " + cleanRows.length;
+      document.getElementById("fileMeta").style.display = "block";
+      document.getElementById("fileStatus").textContent = `Loaded ${file.name}. Every number below now reflects this file.`;
+      renderAll();
+    },
+    error:function(err){
+      document.getElementById("fileStatus").textContent = "Could not read CSV: " + err.message;
+    }
+  });
+}
+
+function setupDropzone(){
+  const dz = document.getElementById("dropzone");
+  const fi = document.getElementById("fileInput");
+  dz.addEventListener("dragover",(e)=>{ e.preventDefault(); dz.classList.add("drag"); });
+  dz.addEventListener("dragleave",()=>dz.classList.remove("drag"));
+  dz.addEventListener("drop",(e)=>{ e.preventDefault(); dz.classList.remove("drag"); const file=e.dataTransfer.files&&e.dataTransfer.files[0]; if(file) parseMetaCsv(file); });
+  fi.addEventListener("change",(e)=>{ const file=e.target.files&&e.target.files[0]; if(file) parseMetaCsv(file); });
+}
+
+setupDropzone();
+renderAll();
+</script>
+</body>
+</html>
